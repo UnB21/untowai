@@ -1,0 +1,10 @@
+[project]
+name = "untowai"
+version = "0.1.0"
+description = "Secure, extensible AI agent platform for Termux and its projects."
+requires-python = ">=3.14"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9,<10",
+]
