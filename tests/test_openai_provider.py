@@ -38,20 +38,39 @@ class FakeTransport:
         return FakeResponse(self.payload)
 
 
+def make_response_payload(text: str) -> dict[str, object]:
+    """Create a raw Responses API payload containing generated text."""
+    return {
+        "output": [
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": text,
+                    }
+                ],
+            }
+        ]
+    }
+
+
 def test_openai_provider_matches_provider_protocol():
     """OpenAIProvider structurally implements the Provider protocol."""
     provider: Provider = OpenAIProvider(
         api_key="test-key",
-        transport=FakeTransport({"output_text": "test response"}),
+        transport=FakeTransport(make_response_payload("test response")),
     )
 
     assert provider.name == "openai"
 
 
 def test_openai_provider_generates_normalized_response():
-    """The provider converts an API response into ProviderResponse."""
+    """The provider converts a raw API response into ProviderResponse."""
     transport = FakeTransport(
-        {"output_text": "A Linux process is a running program."}
+        make_response_payload(
+            "A Linux process is a running program."
+        )
     )
     provider = OpenAIProvider(
         api_key="test-key",
@@ -68,9 +87,77 @@ def test_openai_provider_generates_normalized_response():
     assert response.model == "test-model"
 
 
+def test_openai_provider_extracts_multiple_output_text_items():
+    """The provider combines multiple output text content items."""
+    transport = FakeTransport(
+        {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "First part. ",
+                        },
+                        {
+                            "type": "output_text",
+                            "text": "Second part.",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=transport,
+    )
+
+    response = provider.generate(
+        model="test-model",
+        prompt="Hello",
+    )
+
+    assert response.text == "First part. Second part."
+
+
+def test_openai_provider_ignores_non_message_output_items():
+    """The provider ignores output items that do not contain message text."""
+    transport = FakeTransport(
+        {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [],
+                },
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Actual response.",
+                        }
+                    ],
+                },
+            ]
+        }
+    )
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=transport,
+    )
+
+    response = provider.generate(
+        model="test-model",
+        prompt="Hello",
+    )
+
+    assert response.text == "Actual response."
+
+
 def test_openai_provider_builds_expected_request():
     """The provider constructs the expected authenticated POST request."""
-    transport = FakeTransport({"output_text": "test response"})
+    transport = FakeTransport(make_response_payload("test response"))
     provider = OpenAIProvider(
         api_key="test-key",
         transport=transport,
@@ -100,13 +187,13 @@ def test_openai_provider_rejects_empty_api_key():
     with pytest.raises(ValueError, match="API key must not be empty"):
         OpenAIProvider(
             api_key="",
-            transport=FakeTransport({"output_text": "unused"}),
+            transport=FakeTransport(make_response_payload("unused")),
         )
 
 
 def test_openai_provider_rejects_empty_model():
     """An empty model is rejected before network access."""
-    transport = FakeTransport({"output_text": "unused"})
+    transport = FakeTransport(make_response_payload("unused"))
     provider = OpenAIProvider(
         api_key="test-key",
         transport=transport,
@@ -123,7 +210,7 @@ def test_openai_provider_rejects_empty_model():
 
 def test_openai_provider_rejects_empty_prompt():
     """An empty prompt is rejected before network access."""
-    transport = FakeTransport({"output_text": "unused"})
+    transport = FakeTransport(make_response_payload("unused"))
     provider = OpenAIProvider(
         api_key="test-key",
         transport=transport,
@@ -141,6 +228,33 @@ def test_openai_provider_rejects_empty_prompt():
 def test_openai_provider_rejects_missing_output_text():
     """A malformed API response is rejected."""
     transport = FakeTransport({})
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=transport,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="did not contain output",
+    ):
+        provider.generate(
+            model="test-model",
+            prompt="Hello",
+        )
+
+
+def test_openai_provider_rejects_output_without_message_text():
+    """An output response without usable message text is rejected."""
+    transport = FakeTransport(
+        {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [],
+                }
+            ]
+        }
+    )
     provider = OpenAIProvider(
         api_key="test-key",
         transport=transport,

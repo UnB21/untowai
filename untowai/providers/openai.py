@@ -12,6 +12,49 @@ from .base import ProviderResponse
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 
 
+def _extract_output_text(response_data: dict[str, Any]) -> str:
+    """Extract generated text from a raw Responses API response."""
+    output = response_data.get("output")
+
+    if not isinstance(output, list):
+        raise RuntimeError(
+            "OpenAI API response did not contain output items."
+        )
+
+    text_parts: list[str] = []
+
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+
+        if item.get("type") != "message":
+            continue
+
+        content = item.get("content")
+
+        if not isinstance(content, list):
+            continue
+
+        for content_item in content:
+            if not isinstance(content_item, dict):
+                continue
+
+            if content_item.get("type") != "output_text":
+                continue
+
+            text = content_item.get("text")
+
+            if isinstance(text, str):
+                text_parts.append(text)
+
+    if not text_parts:
+        raise RuntimeError(
+            "OpenAI API response did not contain output text."
+        )
+
+    return "".join(text_parts)
+
+
 class OpenAIProvider:
     """Generate text responses using the OpenAI Responses API."""
 
@@ -66,10 +109,7 @@ class OpenAIProvider:
         except urllib.error.URLError as exc:
             raise RuntimeError("Unable to reach the OpenAI API.") from exc
 
-        text = response_data.get("output_text")
-
-        if not isinstance(text, str):
-            raise RuntimeError("OpenAI API response did not contain output text.")
+        text = _extract_output_text(response_data)
 
         return ProviderResponse(
             text=text,
