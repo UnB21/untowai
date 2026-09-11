@@ -2,7 +2,11 @@
 
 import pytest
 
-from untowai.credentials import CredentialNotFoundError, CredentialSource
+from untowai.credentials import (
+    CredentialNotFoundError,
+    CredentialSource,
+    validate_credential_name,
+)
 
 
 class FakeCredentialSource:
@@ -47,3 +51,60 @@ def test_missing_credential_raises_specific_error():
         match="Credential 'OPENAI_API_KEY' was not found",
     ):
         source.get("OPENAI_API_KEY")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "TEST_CREDENTIAL",
+        "API_KEY_2",
+        "A",
+        "A_B",
+        "A__B",
+        "KEY123",
+    ],
+)
+def test_valid_credential_names_are_accepted(name):
+    """Valid credential identifiers pass validation."""
+    assert validate_credential_name(name) == name
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        "openai_api_key",
+        "OpenAI_API_KEY",
+        "OPENAI-API-KEY",
+        "OPENAI/API_KEY",
+        r"OPENAI\API_KEY",
+        "../OPENAI_API_KEY",
+        "/path/to/key",
+        "OPENAI API KEY",
+        ".OPENAI_API_KEY",
+        "_OPENAI_API_KEY",
+        "OPENAI_API_KEY_",
+        "OPENAI.API.KEY",
+    ],
+)
+def test_invalid_credential_names_are_rejected(name):
+    """Invalid credential identifiers raise ValueError."""
+    with pytest.raises(ValueError):
+        validate_credential_name(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        None,
+        123,
+        b"OPENAI_API_KEY",
+        ["OPENAI_API_KEY"],
+    ],
+)
+def test_non_string_credential_names_are_rejected(name):
+    """Credential identifiers must be strings."""
+    with pytest.raises(TypeError):
+        validate_credential_name(name)
