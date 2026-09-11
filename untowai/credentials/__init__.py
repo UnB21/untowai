@@ -5,9 +5,11 @@ from .base import (
     CredentialSource,
     validate_credential_name,
 )
+from .environment import EnvironmentCredentialSource
 
 __all__ = [
     "CredentialNotFoundError",
     "CredentialSource",
+    "EnvironmentCredentialSource",
     "validate_credential_name",
 ]

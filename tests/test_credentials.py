@@ -5,6 +5,7 @@ import pytest
 from untowai.credentials import (
     CredentialNotFoundError,
     CredentialSource,
+    EnvironmentCredentialSource,
     validate_credential_name,
 )
 
@@ -108,3 +109,80 @@ def test_non_string_credential_names_are_rejected(name):
     """Credential identifiers must be strings."""
     with pytest.raises(TypeError):
         validate_credential_name(name)
+
+
+def test_environment_source_returns_credential():
+    """The environment source returns a requested credential."""
+    environment = {
+        "OPENAI_API_KEY": "test-key",
+    }
+
+    source: CredentialSource = EnvironmentCredentialSource(environment)
+
+    assert source.get("OPENAI_API_KEY") == "test-key"
+
+
+def test_environment_source_matches_protocol():
+    """The environment source satisfies the credential protocol."""
+    source: CredentialSource = EnvironmentCredentialSource(
+        {"TEST_CREDENTIAL": "test-value"}
+    )
+
+    assert source.get("TEST_CREDENTIAL") == "test-value"
+
+
+def test_environment_source_uses_process_environment_by_default(monkeypatch):
+    """The default source reads from the process environment."""
+    monkeypatch.setenv("TEST_CREDENTIAL", "environment-value")
+
+    source = EnvironmentCredentialSource()
+
+    assert source.get("TEST_CREDENTIAL") == "environment-value"
+
+
+def test_environment_source_missing_credential_raises_specific_error():
+    """A missing environment credential raises the specific error."""
+    source = EnvironmentCredentialSource({})
+
+    with pytest.raises(
+        CredentialNotFoundError,
+        match="Credential 'OPENAI_API_KEY' was not found",
+    ):
+        source.get("OPENAI_API_KEY")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        "openai_api_key",
+        "OpenAI_API_KEY",
+        "OPENAI-API-KEY",
+        "OPENAI/API_KEY",
+        r"OPENAI\API_KEY",
+        "../OPENAI_API_KEY",
+        "/path/to/key",
+        "OPENAI API KEY",
+        ".OPENAI_API_KEY",
+        "_OPENAI_API_KEY",
+        "OPENAI_API_KEY_",
+        "OPENAI.API.KEY",
+    ],
+)
+def test_environment_source_rejects_invalid_credential_names(name):
+    """The environment source rejects invalid credential identifiers."""
+    source = EnvironmentCredentialSource({name: "test-value"})
+
+    with pytest.raises(ValueError):
+        source.get(name)
+
+
+def test_environment_source_does_not_expose_credential_value_in_errors():
+    """Missing-credential errors contain the name but not a credential value."""
+    source = EnvironmentCredentialSource({})
+
+    with pytest.raises(CredentialNotFoundError) as exc_info:
+        source.get("OPENAI_API_KEY")
+
+    assert "OPENAI_API_KEY" in str(exc_info.value)
+    assert "secret-value" not in str(exc_info.value)
