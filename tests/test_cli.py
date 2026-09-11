@@ -3,6 +3,7 @@
 import sys
 
 from untowai.cli import main, run_prompt
+from untowai.credentials import CredentialNotFoundError
 from untowai.providers.base import ProviderResponse
 from untowai.providers.registry import ProviderRegistry
 from untowai.service import AIService
@@ -77,9 +78,39 @@ def test_cli_constructs_default_service(capsys, monkeypatch):
 
     assert exit_code == 0
     assert captured.out == "Fake response to: Hello\n"
+    assert captured.err == ""
     assert provider.calls == [
         ("gpt-5", "Hello"),
     ]
+
+
+def test_cli_reports_missing_credential(capsys, monkeypatch):
+    """The CLI reports a missing credential without exposing a secret."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["untowai", "Hello"],
+    )
+
+    def fake_create_service() -> AIService:
+        raise CredentialNotFoundError(
+            "Credential 'OPENAI_API_KEY' was not found."
+        )
+
+    monkeypatch.setattr(
+        "untowai.cli.create_service",
+        fake_create_service,
+    )
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == (
+        "Error: Credential 'OPENAI_API_KEY' was not found.\n"
+    )
 
 
 def test_run_prompt_routes_prompt_through_service(capsys):

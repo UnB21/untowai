@@ -4,6 +4,7 @@ import sys
 
 from . import __version__
 from .application import create_service
+from .credentials import CredentialNotFoundError
 from .service import AIService
 
 
@@ -35,7 +36,11 @@ def main(service: AIService | None = None) -> int:
     prompt = " ".join(sys.argv[1:])
 
     if service is None:
-        service = create_service()
+        try:
+            service = create_service()
+        except CredentialNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
 
     return run_prompt(
         service=service,
