@@ -3,6 +3,7 @@
 import sys
 
 from . import __version__
+from .application import create_service
 from .service import AIService
 
 
@@ -34,8 +35,7 @@ def main(service: AIService | None = None) -> int:
     prompt = " ".join(sys.argv[1:])
 
     if service is None:
-        print("Error: AI service is not configured.")
-        return 1
+        service = create_service()
 
     return run_prompt(
         service=service,

@@ -11,9 +11,8 @@ from untowai.service import AIService
 class FakeProvider:
     """Test provider that never performs network access."""
 
-    name = "fake"
-
-    def __init__(self) -> None:
+    def __init__(self, name: str = "fake") -> None:
+        self.name = name
         self.calls: list[tuple[str, str]] = []
 
     def generate(
@@ -30,9 +29,11 @@ class FakeProvider:
         )
 
 
-def make_fake_service() -> tuple[AIService, FakeProvider]:
+def make_fake_service(
+    provider_name: str = "fake",
+) -> tuple[AIService, FakeProvider]:
     """Create an application service backed by a fake provider."""
-    provider = FakeProvider()
+    provider = FakeProvider(name=provider_name)
     registry = ProviderRegistry()
     registry.register(provider)
 
@@ -52,20 +53,33 @@ def test_cli_without_prompt(capsys, monkeypatch):
     assert "Usage: untowai <prompt>" in captured.out
 
 
-def test_cli_requires_service_for_prompt(capsys, monkeypatch):
-    """The CLI refuses to execute a prompt without a configured service."""
+def test_cli_constructs_default_service(capsys, monkeypatch):
+    """The CLI constructs the default service when none is provided."""
     monkeypatch.setattr(
         sys,
         "argv",
         ["untowai", "Hello"],
     )
 
+    service, provider = make_fake_service(provider_name="openai")
+
+    def fake_create_service() -> AIService:
+        return service
+
+    monkeypatch.setattr(
+        "untowai.cli.create_service",
+        fake_create_service,
+    )
+
     exit_code = main()
 
     captured = capsys.readouterr()
 
-    assert exit_code == 1
-    assert "Error: AI service is not configured." in captured.out
+    assert exit_code == 0
+    assert captured.out == "Fake response to: Hello\n"
+    assert provider.calls == [
+        ("gpt-5", "Hello"),
+    ]
 
 
 def test_run_prompt_routes_prompt_through_service(capsys):
