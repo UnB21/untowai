@@ -25,6 +25,13 @@ class FakeCredentialSource:
             ) from exc
 
 
+class FalseyCredentialSource(FakeCredentialSource):
+    """Test credential source whose object is false-y."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
 class FakeOpenAIProvider:
     """Test provider that never performs network access."""
 
@@ -76,6 +83,29 @@ def test_create_service_uses_credential_source(monkeypatch):
 
     assert response.text == "fake response"
     assert captured["provider"].api_key == "test-key"
+    assert credential_source.requests == [OPENAI_API_KEY_NAME]
+
+
+def test_create_service_uses_falsey_credential_source(monkeypatch):
+    """A false-y credential source is still used when explicitly provided."""
+    credential_source: CredentialSource = FalseyCredentialSource(
+        {OPENAI_API_KEY_NAME: "test-key"}
+    )
+
+    monkeypatch.setattr(
+        "untowai.application.OpenAIProvider",
+        FakeOpenAIProvider,
+    )
+
+    service = create_service(credential_source)
+
+    response = service.ask(
+        provider_name="openai",
+        model="test-model",
+        prompt="Hello",
+    )
+
+    assert response.text == "fake response"
     assert credential_source.requests == [OPENAI_API_KEY_NAME]
 
 
