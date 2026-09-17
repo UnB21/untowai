@@ -4,7 +4,7 @@ import sys
 
 from untowai.cli import main, run_prompt
 from untowai.credentials import CredentialNotFoundError
-from untowai.providers.base import ProviderResponse
+from untowai.providers.base import ProviderError, ProviderResponse
 from untowai.providers.registry import ProviderRegistry
 from untowai.service import AIService
 
@@ -110,6 +110,37 @@ def test_cli_reports_missing_credential(capsys, monkeypatch):
     assert captured.out == ""
     assert captured.err == (
         "Error: Credential 'OPENAI_API_KEY' was not found.\n"
+    )
+
+
+def test_cli_reports_provider_error(capsys, monkeypatch):
+    """The CLI converts provider failures into a safe process result."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["untowai", "Hello"],
+    )
+
+    service, _ = make_fake_service(provider_name="openai")
+
+    def fake_run_prompt(*, service, provider_name, model, prompt):
+        raise ProviderError(
+            "OpenAI API request failed with HTTP 401."
+        )
+
+    monkeypatch.setattr(
+        "untowai.cli.run_prompt",
+        fake_run_prompt,
+    )
+
+    exit_code = main(service=service)
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == (
+        "Error: OpenAI API request failed with HTTP 401.\n"
     )
 
 

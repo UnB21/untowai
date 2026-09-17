@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class ProviderError(RuntimeError):
+    """Raised when an AI provider cannot complete a request."""
+
+
 @dataclass(frozen=True)
 class ProviderResponse:
     """Normalized response returned by an AI provider."""

@@ -1,10 +1,11 @@
 """Tests for the UnTowAI OpenAI provider."""
 
 import json
+import urllib.error
 
 import pytest
 
-from untowai.providers.base import Provider
+from untowai.providers.base import Provider, ProviderError
 from untowai.providers.openai import OpenAIProvider
 
 
@@ -22,6 +23,32 @@ class FakeResponse:
 
     def read(self) -> bytes:
         return json.dumps(self._payload).encode("utf-8")
+
+
+class InvalidJSONResponse:
+    """Fake HTTP response containing invalid JSON."""
+
+    def __enter__(self) -> "InvalidJSONResponse":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return b"{not valid json"
+
+
+class NonObjectJSONResponse:
+    """Fake HTTP response containing valid non-object JSON."""
+
+    def __enter__(self) -> "NonObjectJSONResponse":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return b"[]"
 
 
 class FakeTransport:
@@ -225,8 +252,110 @@ def test_openai_provider_rejects_empty_prompt():
     assert transport.request is None
 
 
-def test_openai_provider_rejects_missing_output_text():
-    """A malformed API response is rejected."""
+def test_openai_provider_raises_provider_error_for_http_failure():
+    """HTTP failures are normalized to ProviderError."""
+    def transport(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            401,
+            "Unauthorized",
+            {},
+            None,
+        )
+
+    provider = OpenAIProvider(
+        api_key="secret-test-key",
+        transport=transport,
+    )
+
+    with pytest.raises(
+        ProviderError,
+        match="OpenAI API request failed with HTTP 401",
+    ) as exc_info:
+        provider.generate(
+            model="test-model",
+            prompt="Hello",
+        )
+
+    assert "secret-test-key" not in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, urllib.error.HTTPError)
+
+
+def test_openai_provider_raises_provider_error_for_network_failure():
+    """Network failures are normalized to ProviderError."""
+    network_error = urllib.error.URLError("connection failed")
+
+    def transport(request, timeout):
+        raise network_error
+
+    provider = OpenAIProvider(
+        api_key="secret-test-key",
+        transport=transport,
+    )
+
+    with pytest.raises(
+        ProviderError,
+        match="Unable to reach the OpenAI API",
+    ) as exc_info:
+        provider.generate(
+            model="test-model",
+            prompt="Hello",
+        )
+
+    assert "secret-test-key" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is network_error
+
+
+def test_openai_provider_raises_provider_error_for_invalid_json():
+    """Invalid JSON responses are normalized to ProviderError."""
+    def transport(request, timeout):
+        return InvalidJSONResponse()
+
+    provider = OpenAIProvider(
+        api_key="secret-test-key",
+        transport=transport,
+    )
+
+    with pytest.raises(
+        ProviderError,
+        match="OpenAI API returned invalid JSON",
+    ) as exc_info:
+        provider.generate(
+            model="test-model",
+            prompt="Hello",
+        )
+
+    assert "secret-test-key" not in str(exc_info.value)
+    assert isinstance(
+        exc_info.value.__cause__,
+        json.JSONDecodeError,
+    )
+
+
+def test_openai_provider_raises_provider_error_for_non_object_json():
+    """Valid non-object JSON responses are rejected safely."""
+    def transport(request, timeout):
+        return NonObjectJSONResponse()
+
+    provider = OpenAIProvider(
+        api_key="secret-test-key",
+        transport=transport,
+    )
+
+    with pytest.raises(
+        ProviderError,
+        match="OpenAI API response was not a JSON object",
+    ) as exc_info:
+        provider.generate(
+            model="test-model",
+            prompt="Hello",
+        )
+
+    assert "secret-test-key" not in str(exc_info.value)
+
+
+def test_openai_provider_rejects_missing_output():
+    """A response without output items raises ProviderError."""
     transport = FakeTransport({})
     provider = OpenAIProvider(
         api_key="test-key",
@@ -234,7 +363,7 @@ def test_openai_provider_rejects_missing_output_text():
     )
 
     with pytest.raises(
-        RuntimeError,
+        ProviderError,
         match="did not contain output",
     ):
         provider.generate(
@@ -244,7 +373,7 @@ def test_openai_provider_rejects_missing_output_text():
 
 
 def test_openai_provider_rejects_output_without_message_text():
-    """An output response without usable message text is rejected."""
+    """An output response without usable message text raises ProviderError."""
     transport = FakeTransport(
         {
             "output": [
@@ -261,7 +390,7 @@ def test_openai_provider_rejects_output_without_message_text():
     )
 
     with pytest.raises(
-        RuntimeError,
+        ProviderError,
         match="did not contain output text",
     ):
         provider.generate(

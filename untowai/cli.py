@@ -5,6 +5,7 @@ import sys
 from . import __version__
 from .application import create_service
 from .credentials import CredentialNotFoundError
+from .providers.base import ProviderError
 from .service import AIService
 
 
@@ -42,12 +43,16 @@ def main(service: AIService | None = None) -> int:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
 
-    return run_prompt(
-        service=service,
-        provider_name="openai",
-        model="gpt-5",
-        prompt=prompt,
-    )
+    try:
+        return run_prompt(
+            service=service,
+            provider_name="openai",
+            model="gpt-5",
+            prompt=prompt,
+        )
+    except ProviderError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

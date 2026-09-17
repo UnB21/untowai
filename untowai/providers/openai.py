@@ -6,18 +6,23 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from .base import ProviderResponse
+from .base import ProviderError, ProviderResponse
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 
 
-def _extract_output_text(response_data: dict[str, Any]) -> str:
+def _extract_output_text(response_data: Any) -> str:
     """Extract generated text from a raw Responses API response."""
+    if not isinstance(response_data, dict):
+        raise ProviderError(
+            "OpenAI API response was not a JSON object."
+        )
+
     output = response_data.get("output")
 
     if not isinstance(output, list):
-        raise RuntimeError(
+        raise ProviderError(
             "OpenAI API response did not contain output items."
         )
 
@@ -48,7 +53,7 @@ def _extract_output_text(response_data: dict[str, Any]) -> str:
                 text_parts.append(text)
 
     if not text_parts:
-        raise RuntimeError(
+        raise ProviderError(
             "OpenAI API response did not contain output text."
         )
 
@@ -103,11 +108,17 @@ class OpenAIProvider:
             with self._transport(request, timeout=30) as response:
                 response_data = json.load(response)
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(
+            raise ProviderError(
                 f"OpenAI API request failed with HTTP {exc.code}."
             ) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError("Unable to reach the OpenAI API.") from exc
+            raise ProviderError(
+                "Unable to reach the OpenAI API."
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                "OpenAI API returned invalid JSON."
+            ) from exc
 
         text = _extract_output_text(response_data)
 
