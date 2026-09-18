@@ -51,7 +51,7 @@ def test_cli_without_prompt(capsys, monkeypatch):
 
     assert exit_code == 0
     assert "UnTowAI 0.1.0" in captured.out
-    assert "Usage: untowai <prompt>" in captured.out
+    assert "Usage: untowai [--model MODEL] <prompt>" in captured.out
 
 
 def test_cli_constructs_default_service(capsys, monkeypatch):
@@ -81,6 +81,36 @@ def test_cli_constructs_default_service(capsys, monkeypatch):
     assert captured.err == ""
     assert provider.calls == [
         ("gpt-5", "Hello"),
+    ]
+
+
+def test_cli_accepts_custom_model(capsys, monkeypatch):
+    """The CLI passes an explicitly selected model to the service."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["untowai", "--model", "gpt-5-mini", "Hello"],
+    )
+
+    service, provider = make_fake_service(provider_name="openai")
+
+    def fake_create_service() -> AIService:
+        return service
+
+    monkeypatch.setattr(
+        "untowai.cli.create_service",
+        fake_create_service,
+    )
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == "Fake response to: Hello\n"
+    assert captured.err == ""
+    assert provider.calls == [
+        ("gpt-5-mini", "Hello"),
     ]
 
 
